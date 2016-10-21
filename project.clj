@@ -4,5 +4,4 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.7.0"]
-                 [k2nr/docker "0.0.3-SNAPSHOT" :exclusions [clj-http]]
-                 [clj-http "2.3.0"]])
+                 [com.github.docker-java/docker-java "3.0.6"]])
