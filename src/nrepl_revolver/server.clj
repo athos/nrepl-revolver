@@ -17,10 +17,12 @@
 
 (defn proxy-handler [client]
   (fn [{:keys [transport] :as msg}]
-    (print "receive message: ")
-    (prn msg)
-    (let [nrepl (nrepl-client client)]
-      (doseq [res (nrepl/message nrepl (dissoc msg :transport))]
+    (let [nrepl (nrepl-client client)
+          msg (dissoc msg :transport :session)]
+      (print "receive message: ")
+      (prn msg)
+      (prn :nrepl-client nrepl)
+      (doseq [res (nrepl/message nrepl msg)]
         (print "sending response: ")
         (prn res)
         (transport/send transport res)))))
