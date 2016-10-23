@@ -1,6 +1,9 @@
-(ns micro-nrepl.core)
+(ns micro-nrepl.core
+  (:gen-class)
+  (:require [clojure.tools.nrepl.server :as nrepl]))
 
-(defn foo
-  "I don't do a whole lot."
-  [x]
-  (println x "Hello, World!"))
+(defn -main [& [address port]]
+  (let [address (or address "localhost")
+        port (Long/parseLong (or port "5555"))]
+    (println "Waiting for connection at" (str address ":" port) "....")
+    (nrepl/start-server :bind address :port port)))
