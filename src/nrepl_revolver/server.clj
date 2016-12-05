@@ -9,8 +9,15 @@
 
 (def ^:const NREPL_IMAGE_NAME "nrepl-revolver")
 
+(def fresh-port
+  (let [next-port (atom 5556)]
+    (fn []
+      (let [port @next-port]
+        (swap! next-port inc)
+        port))))
+
 (defn create-session [docker]
-  (let [port 5556
+  (let [port (fresh-port)
         container (docker/create-container docker NREPL_IMAGE_NAME
                                            :bindings {port 5555})]
     (docker/start-container docker container)
