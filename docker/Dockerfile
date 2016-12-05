@@ -10,4 +10,4 @@ COPY . /usr/src/app
 
 RUN mv "$(lein uberjar | sed -n 's/^Created \(.*standalone\.jar\)/\1/p')" app-standalone.jar
 
-CMD ["java", "-cp", "app-standalone.jar", "micro_nrepl.core", "172.17.0.2", "5556"]
+CMD ["java", "-cp", "app-standalone.jar", "micro_nrepl.core"]

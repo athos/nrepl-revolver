@@ -12,7 +12,7 @@
 (defn create-session [docker]
   (let [port 5556
         container (docker/create-container docker NREPL_IMAGE_NAME
-                                           :bindings {port 5556})]
+                                           :bindings {port 5555})]
     (docker/start-container docker container)
     {:id (uuid)
      :port port
