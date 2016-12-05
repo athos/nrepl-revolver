@@ -32,6 +32,11 @@
     container
     (.getId ^CreateContainerResponse container)))
 
+(defn inspect-container [client container]
+  (.. client
+      (inspectContainerCmd (->container-id container))
+      (exec)))
+
 (defn start-container [client container]
   (.. client
       (startContainerCmd (->container-id container))
