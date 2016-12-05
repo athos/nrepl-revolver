@@ -1,38 +1,74 @@
 (ns nrepl-revolver.server
   (:require [clojure.tools.nrepl :as nrepl]
-            [clojure.tools.nrepl.middleware.session :as session]
-            [clojure.tools.nrepl.server :as server]
-            [clojure.tools.nrepl.transport :as transport]
-            [nrepl-revolver.docker :as docker]))
+            [clojure.tools.nrepl
+             [misc :refer [uuid response-for log]]
+             [server :as server]
+             [transport :as t]]
+            [nrepl-revolver.docker :as docker]
+            [nrepl-revolver.middleware.session :as session]))
 
-(defn make-client [port]
-  {:port port :nrepl (atom nil)})
+(def ^:const NREPL_IMAGE_NAME "nrepl-revolver")
 
-(defn nrepl-client [c]
-  (or @(:nrepl c)
-      (let [conn (nrepl/connect :port (:port c))
-            client (nrepl/client conn 1000)]
-        (swap! (:nrepl c) client)
-        client)))
+(defn create-session [docker]
+  (let [port 5556
+        container (docker/create-container docker NREPL_IMAGE_NAME
+                                           :bindings {port 5556})]
+    (docker/start-container docker container)
+    {:id (uuid)
+     :port port
+     :container container}))
 
-(defn proxy-handler [client]
-  (fn [{:keys [transport] :as msg}]
-    (let [nrepl (nrepl-client client)
-          msg (dissoc msg :transport :session)]
-      (print "receive message: ")
-      (prn msg)
-      (prn :nrepl-client nrepl)
-      (doseq [res (nrepl/message nrepl msg)]
-        (print "sending response: ")
-        (prn res)
-        (transport/send transport res)))))
+(defn- register-session [sessions {:keys [session transport docker] :as msg}]
+  (let [{:keys [id] :as session} (create-session docker transport)]
+    (swap! sessions assoc id session)
+    (t/send transport (response-for msg :status :done :new-session id))))
+
+(defn- close-session [sessions {:keys [session transport docker] :as msg}]
+  (swap! sessions dissoc (:id session))
+  (docker/stop-container docker (:container session))
+  (t/send transport (response-for msg :status #{:done :session-closed})))
+
+(defn- with-nrepl-client [session f]
+  (with-open [conn (nrepl/connect :port (:port session))]
+    (f (nrepl/client conn 1000))))
+
+(defn- redirect-message [{:keys [session transport] :as msg}]
+  (with-nrepl-client session
+    (fn [client]
+      (let [msg (dissoc msg :session :transport :docker)]
+        (doseq [res (nrepl/message client msg)]
+          (t/send transport res))))))
+
+(defn session-handler [sessions docker]
+  (fn [{:keys [op session transport] :as msg}]
+    (let [the-session (if session
+                        (get @sessions session)
+                        (:default @sessions))]
+      (if-not the-session
+        (t/send transport (response-for msg :status #{:error :unknown-session}))
+        (let [msg (assoc msg :session the-session :docker docker)]
+          (case op
+            "clone" (register-session sessions msg)
+            "close" (close-session sessions msg)
+            (redirect-message msg)))))))
+
+(defrecord RevolverServer [server docker sessions])
+
+(defn- initial-sessions [docker]
+  (let [{:keys [id] :as session} (create-session docker)]
+    (atom {:default session, id session})))
 
 (defn start-server [& {:keys [port] :or {port 5555}}]
-  (let [client (docker/make-client "tcp://localhost:2376")
-        container (docker/create-container client "nrepl-revolver"
-                                           :bindings {5556 5556})
-        _ (docker/start-container client container)
-        handler (-> (make-client 5556)
-                    proxy-handler
-                    session/session)]
-    (server/start-server :port port :handler handler)))
+  (let [docker (docker/make-client "tcp://localhost:2376")
+        sessions (initial-sessions docker)
+        handler (session-handler sessions docker)]
+    (->RevolverServer (server/start-server :port port :handler handler)
+                      docker
+                      sessions)))
+
+(defn stop-server [server]
+  (doseq [[id {:keys [container]}] @(:sessions server)
+          :when (not= id :default)]
+    (docker/stop-container (:docker server) container))
+  (reset! (:sessions server) {})
+  (server/stop-server (:server server)))
