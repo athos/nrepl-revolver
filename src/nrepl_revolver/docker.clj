@@ -11,15 +11,15 @@
   (.. ^DockerClient client (infoCmd) (exec)))
 
 (defn create-container [client image & {:keys [command expose bindings]}]
-  (let [expose (some->> (or expose (and bindings (keys bindings)))
+  (let [expose (some->> (or expose (and bindings (vals bindings)))
                         (map #(ExposedPort/tcp (long %)))
                         (into-array ExposedPort))
         bindings (and bindings
                       (let [ports (Ports.)]
                         (doseq [[from to] bindings]
                           (.bind ports
-                                 (ExposedPort/tcp (long from))
-                                 (Ports$Binding/bindPort (long to))))
+                                 (ExposedPort/tcp (long to))
+                                 (Ports$Binding/bindPort (long from))))
                         ports))]
     (cond-> (.createContainerCmd ^DockerClient client ^String image)
       command (.withCmd (into-array String command))
