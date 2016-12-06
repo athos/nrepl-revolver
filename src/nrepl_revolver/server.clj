@@ -1,13 +1,16 @@
 (ns nrepl-revolver.server
   (:require [clojure.tools.nrepl :as nrepl]
             [clojure.tools.nrepl
-             [misc :refer [uuid response-for log]]
+             [misc :as misc :refer [uuid log]]
              [server :as server]
              [transport :as t]]
             [nrepl-revolver.docker :as docker]
             [nrepl-revolver.middleware.session :as session]))
 
 (def ^:const NREPL_IMAGE_NAME "nrepl-revolver")
+
+(defn- response-for [msg & args]
+  (apply misc/response-for (dissoc msg :session) args))
 
 (def fresh-port
   (let [next-port (atom 5556)]
@@ -25,8 +28,8 @@
      :port port
      :container container}))
 
-(defn- register-session [sessions {:keys [session transport docker] :as msg}]
-  (let [{:keys [id] :as session} (create-session docker transport)]
+(defn- register-session [sessions {:keys [transport docker] :as msg}]
+  (let [{:keys [id] :as session} (create-session docker)]
     (swap! sessions assoc id session)
     (t/send transport (response-for msg :status :done :new-session id))))
 
