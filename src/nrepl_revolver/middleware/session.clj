@@ -2,51 +2,39 @@
   (:require [clojure.tools.nrepl
              [misc :as misc :refer [uuid]]
              [transport :as t]]
-   [nrepl-revolver.docker :as docker]))
-
-(def ^:const NREPL_IMAGE_NAME "nrepl-revolver")
+            [nrepl-revolver.container-pool :as pool]))
 
 (defn- response-for [msg & args]
   (apply misc/response-for (dissoc msg :session) args))
 
-(def ^:private fresh-port
-  (let [next-port (atom 5556)]
-    (fn []
-      (let [port @next-port]
-        (swap! next-port inc)
-        port))))
-
-(defn create-session [docker]
-  (let [port (fresh-port)
-        container (docker/create-container docker NREPL_IMAGE_NAME
-                                           :bindings {port 5555})]
-    (docker/start-container docker container)
+(defn create-session [pool]
+  (let [{:keys [container port]} (pool/use-container pool)]
     {:id (uuid)
      :port port
      :container container}))
 
-(defn- register-session [sessions {:keys [transport docker] :as msg}]
-  (let [{:keys [id] :as session} (create-session docker)]
+(defn- register-session [sessions {:keys [transport pool] :as msg}]
+  (let [{:keys [id] :as session} (create-session pool)]
     (swap! sessions assoc id session)
     (t/send transport (response-for msg :status :done :new-session id))))
 
-(defn- close-session [sessions {:keys [session transport docker] :as msg}]
+(defn- close-session [sessions {:keys [session transport pool] :as msg}]
   (swap! sessions dissoc (:id session))
-  (docker/stop-container docker (:container session))
+  (pool/dispose-container pool (:container session))
   (t/send transport (response-for msg :status #{:done :session-closed})))
 
-(defn initial-sessions [docker]
-  (let [{:keys [id] :as session} (create-session docker)]
+(defn initial-sessions [pool]
+  (let [{:keys [id] :as session} (create-session pool)]
     (atom {:default session, id session})))
 
-(defn session [handler sessions docker]
+(defn session [handler sessions pool]
   (fn [{:keys [op session transport] :as msg}]
     (let [the-session (if session
                         (get @sessions session)
                         (:default @sessions))]
       (if-not the-session
         (t/send transport (response-for msg :status #{:error :unknown-session}))
-        (let [msg (assoc msg :session the-session :docker docker)]
+        (let [msg (assoc msg :session the-session :pool pool)]
           (case op
             "clone" (register-session sessions msg)
             "close" (close-session sessions msg)

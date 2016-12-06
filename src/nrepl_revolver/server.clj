@@ -3,6 +3,7 @@
             [clojure.tools.nrepl
              [server :as server]
              [transport :as t]]
+            [nrepl-revolver.container-pool :as pool]
             [nrepl-revolver.docker :as docker]
             [nrepl-revolver.middleware.session :as session]))
 
@@ -13,24 +14,26 @@
 (defn redirecting-handler [{:keys [session transport] :as msg}]
   (with-nrepl-client session
     (fn [client]
-      (let [msg (dissoc msg :session :transport :docker)]
+      (let [msg (dissoc msg :session :transport :pool)]
         (doseq [res (nrepl/message client msg)]
           (t/send transport res))))))
 
-(defrecord RevolverServer [server docker sessions])
+(defrecord RevolverServer [server pool sessions])
 
 (defn start-server [& {:keys [port] :or {port 5555}}]
   (let [docker (docker/make-client "tcp://localhost:2376")
-        sessions (session/initial-sessions docker)
+        pool (pool/make-pool docker 3)
+        sessions (session/initial-sessions pool)
         handler (-> redirecting-handler
-                    (session/session sessions docker))]
+                    (session/session sessions pool))]
     (->RevolverServer (server/start-server :port port :handler handler)
-                      docker
+                      pool
                       sessions)))
 
 (defn stop-server [server]
   (doseq [[id {:keys [container]}] @(:sessions server)
           :when (not= id :default)]
-    (docker/stop-container (:docker server) container))
+    (pool/destroy-container (:pool server) container))
+  (pool/shutdown (:pool server))
   (reset! (:sessions server) {})
   (server/stop-server (:server server)))
