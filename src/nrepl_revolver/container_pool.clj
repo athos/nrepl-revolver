@@ -41,6 +41,7 @@
 
 (defn destroy-container [pool container]
   (docker/stop-container (:docker pool) container)
+  (docker/remove-container (:docker pool) container)
   nil)
 
 (defn dispose-container [pool container]

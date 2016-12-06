@@ -46,3 +46,9 @@
   (.. client
       (stopContainerCmd (->container-id container))
       (exec)))
+
+(defn remove-container [^DockerClient client container & {:keys [force?]}]
+  (.. client
+      (removeContainerCmd (->container-id container))
+      (withForce (boolean force?))
+      (exec)))
