@@ -7,12 +7,8 @@
             [nrepl-revolver.docker :as docker]
             [nrepl-revolver.middleware.session :as session]))
 
-(defn- with-nrepl-client [session f]
-  (with-open [conn (nrepl/connect :port (:port session))]
-    (f (nrepl/client conn 1000))))
-
 (defn redirecting-handler [{:keys [session transport] :as msg}]
-  (with-nrepl-client session
+  (session/with-session-nrepl-client session
     (fn [client]
       (let [msg (dissoc msg :session :transport :pool)]
         (doseq [res (nrepl/message client msg)]
@@ -31,9 +27,6 @@
                       sessions)))
 
 (defn stop-server [server]
-  (doseq [[id {:keys [container]}] @(:sessions server)
-          :when (not= id :default)]
-    (pool/destroy-container (:pool server) container))
-  (pool/shutdown (:pool server))
+  (session/shutdown-sessions (:sessions server))
   (reset! (:sessions server) {})
   (server/stop-server (:server server)))
