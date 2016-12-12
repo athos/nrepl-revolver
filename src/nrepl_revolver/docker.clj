@@ -32,17 +32,17 @@
     container
     (.getId ^CreateContainerResponse container)))
 
-(defn inspect-container [client container]
+(defn inspect-container [^DockerClient client container]
   (.. client
       (inspectContainerCmd (->container-id container))
       (exec)))
 
-(defn start-container [client container]
+(defn start-container [^DockerClient client container]
   (.. client
       (startContainerCmd (->container-id container))
       (exec)))
 
-(defn stop-container [client container]
+(defn stop-container [^DockerClient client container]
   (.. client
       (stopContainerCmd (->container-id container))
       (exec)))
