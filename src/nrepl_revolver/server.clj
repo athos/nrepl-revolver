@@ -10,9 +10,15 @@
 (defn redirecting-handler [{:keys [session transport] :as msg}]
   (session/with-session-nrepl-client session
     (fn [client]
-      (let [msg (dissoc msg :session :transport :pool)]
-        (doseq [res (nrepl/message client msg)]
-          (t/send transport res))))))
+      (let [{:keys [id]} @(:nrepl session)
+            msg (-> msg
+                    (dissoc :transport :pool)
+                    (assoc :session id))]
+        (doseq [res (nrepl/message client msg)
+                :let [res' (cond-> res
+                             (= id (:session res))
+                             (assoc :session (:id session)))]]
+          (t/send transport res'))))))
 
 (defrecord RevolverServer [server pool sessions])
 

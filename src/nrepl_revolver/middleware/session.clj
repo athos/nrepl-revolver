@@ -1,12 +1,9 @@
 (ns nrepl-revolver.middleware.session
   (:require [clojure.tools.nrepl
-             [misc :as misc :refer [uuid]]
+             [misc :as misc :refer [uuid response-for]]
              [transport :as t]]
             [nrepl-revolver.container-pool :as pool]
             [clojure.tools.nrepl :as nrepl]))
-
-(defn- response-for [msg & args]
-  (apply misc/response-for (dissoc msg :session) args))
 
 (defn create-session [pool]
   (let [{:keys [container port]} (pool/use-container pool)]
@@ -25,7 +22,13 @@
   (f (:client @(:nrepl session))))
 
 (defn- register-session [sessions {:keys [transport pool] :as msg}]
-  (let [{:keys [id] :as session} (create-session pool)]
+  (let [{:keys [id] :as session} (create-session pool)
+        msg (dissoc msg :session)]
+    (with-session-nrepl-client session
+      (fn [client]
+        (when-let [id' (->> (nrepl/message client {:op :clone})
+                            (some :new-session))]
+          (swap! (:nrepl session) assoc :id id'))))
     (swap! sessions assoc id session)
     (t/send transport (response-for msg :status :done :new-session id))))
 
