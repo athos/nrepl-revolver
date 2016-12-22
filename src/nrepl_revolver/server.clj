@@ -10,16 +10,15 @@
 
 (defn redirecting-handler [{:keys [session transport] :as msg}]
   (let [{:keys [id client]} (session/session-nrepl session)
-        msg (-> msg
-                (dissoc :transport)
-                (assoc :session id))]
+        msg (cond-> (dissoc msg :session :transport)
+              id (assoc :session id))]
     (doseq [res (nrepl/message client msg)
             :let [res' (cond-> res
                          (= id (:session res))
                          (assoc :session (:id session)))]]
       (t/send transport res'))))
 
-(defrecord RevolverServer [server sessions])
+(defrecord RevolverServer [server manager])
 
 (defn start-server [& {:keys [port] :or {port 5555}}]
   (let [docker (docker/make-client "tcp://localhost:2376")
@@ -35,5 +34,5 @@
     (->RevolverServer server manager)))
 
 (defn stop-server [server]
-  (session/shutdown-sessions (:sessions server))
+  (session/shutdown-sessions (:manager server))
   (server/stop-server (:server server)))

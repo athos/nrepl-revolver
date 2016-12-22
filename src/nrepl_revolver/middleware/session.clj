@@ -24,10 +24,10 @@
                           (let [id (->> (nrepl/message c {:op :clone})
                                         (some :new-session))]
                             (assoc nrepl :id id)))
-        ss (update session :nrepl #(delay (update-nrepl-id @%)))]
+        session' (update session :nrepl #(delay (update-nrepl-id @%)))]
     (swap! manager
            #(-> %
-                (update :sessions assoc id ss)
+                (assoc-in [:sessions id] session')
                 (update-in [:transport->sessions transport]
                            (fnil conj #{}) id)))
     (t/send transport (response-for msg :status :done :new-session id))))
