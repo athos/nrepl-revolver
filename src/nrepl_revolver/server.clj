@@ -1,5 +1,6 @@
 (ns nrepl-revolver.server
-  (:require [clojure.tools.nrepl :as nrepl]
+  (:require [clojure.set :as set]
+            [clojure.tools.nrepl :as nrepl]
             [clojure.tools.nrepl
              [server :as server]
              [transport :as t]]
@@ -8,17 +9,15 @@
             [nrepl-revolver.middleware.session :as session]))
 
 (defn redirecting-handler [{:keys [session transport] :as msg}]
-  (session/with-session-nrepl-client session
-    (fn [client]
-      (let [{:keys [id]} @(:nrepl session)
-            msg (-> msg
-                    (dissoc :transport :pool)
-                    (assoc :session id))]
-        (doseq [res (nrepl/message client msg)
-                :let [res' (cond-> res
-                             (= id (:session res))
-                             (assoc :session (:id session)))]]
-          (t/send transport res'))))))
+  (let [{:keys [id client]} (session/session-nrepl session)
+        msg (-> msg
+                (dissoc :transport)
+                (assoc :session id))]
+    (doseq [res (nrepl/message client msg)
+            :let [res' (cond-> res
+                         (= id (:session res))
+                         (assoc :session (:id session)))]]
+      (t/send transport res'))))
 
 (defrecord RevolverServer [server sessions])
 
@@ -27,9 +26,13 @@
         pool (pool/make-pool docker 3)
         manager (session/session-manager pool)
         handler (-> redirecting-handler
-                    (session/session manager))]
-    (->RevolverServer (server/start-server :port port :handler handler)
-                      manager)))
+                    (session/session manager))
+        server (server/start-server :port port :handler handler)]
+    (add-watch (:open-transports server) ::close
+               (fn [_ _ old new]
+                 (doseq [transport (set/difference old new)]
+                   (session/close-sessions-for manager transport))))
+    (->RevolverServer server manager)))
 
 (defn stop-server [server]
   (session/shutdown-sessions (:sessions server))
