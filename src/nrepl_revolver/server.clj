@@ -20,19 +20,17 @@
                              (assoc :session (:id session)))]]
           (t/send transport res'))))))
 
-(defrecord RevolverServer [server pool sessions])
+(defrecord RevolverServer [server sessions])
 
 (defn start-server [& {:keys [port] :or {port 5555}}]
   (let [docker (docker/make-client "tcp://localhost:2376")
         pool (pool/make-pool docker 3)
-        sessions (session/initial-sessions pool)
+        manager (session/session-manager pool)
         handler (-> redirecting-handler
-                    (session/session sessions pool))]
+                    (session/session manager))]
     (->RevolverServer (server/start-server :port port :handler handler)
-                      pool
-                      sessions)))
+                      manager)))
 
 (defn stop-server [server]
   (session/shutdown-sessions (:sessions server))
-  (reset! (:sessions server) {})
   (server/stop-server (:server server)))
