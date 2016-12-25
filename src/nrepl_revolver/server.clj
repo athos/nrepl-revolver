@@ -4,9 +4,9 @@
             [clojure.tools.nrepl
              [server :as server]
              [transport :as t]]
-            [nrepl-revolver.container-pool :as pool]
             [nrepl-revolver.docker :as docker]
-            [nrepl-revolver.middleware.session :as session]))
+            [nrepl-revolver.middleware.session :as session]
+            [nrepl-revolver.worker-pool.docker :as pool]))
 
 (defn redirecting-handler [{:keys [session transport] :as msg}]
   (let [{:keys [id client]} (session/session-nrepl session)
@@ -22,7 +22,7 @@
 
 (defn start-server [& {:keys [port] :or {port 5555}}]
   (let [docker (docker/make-client "tcp://localhost:2376")
-        pool (pool/make-pool docker 3)
+        pool (pool/container-pool docker 3)
         manager (session/session-manager pool)
         handler (-> redirecting-handler
                     (session/session manager))

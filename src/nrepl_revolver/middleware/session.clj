@@ -2,16 +2,16 @@
   (:require [clojure.tools.nrepl
              [misc :as misc :refer [uuid response-for]]
              [transport :as t]]
-            [nrepl-revolver.container-pool :as pool]
+            [nrepl-revolver.worker-pool :as pool]
             [clojure.tools.nrepl :as nrepl]))
 
 (defrecord SessionManager [sessions transport->sessions pool])
 
 (defn create-session [pool]
-  (let [{:keys [container port]} (pool/use-container pool)]
+  (let [worker (pool/adopt-worker pool)]
     {:id (uuid)
-     :container container
-     :nrepl (delay {:client (-> (nrepl/connect :port port)
+     :worker worker
+     :nrepl (delay {:client (-> (pool/transport worker)
                                 (nrepl/client 1000))})}))
 
 (defn session-nrepl [session]
@@ -38,14 +38,14 @@
            #(-> %
                 (update :sessions dissoc id)
                 (update-in [:transport->sessions transport] disj id))))
-  (pool/dispose-container (:pool @manager) (:container session))
+  (pool/dismiss-worker (:pool @manager) (:worker session))
   (t/send transport (response-for msg :status #{:done :session-closed})))
 
 (defn close-sessions-for [manager transport]
   (let [ids (get-in @manager [:transport->sessions transport])]
     (doseq [id ids
             :let [session (get (:sessions @manager) id)]]
-      (pool/dispose-container (:pool @manager) (:container session)))
+      (pool/dismiss-worker (:pool @manager) (:worker session)))
     (swap! manager
            (fn [manager]
              (let [sessions' (into {} (remove #(contains? ids (key %)))
@@ -72,9 +72,5 @@
             (handler msg)))))))
 
 (defn shutdown-sessions [manager]
-  (let [pool (:pool @manager)]
-    (doseq [[id {:keys [container nrepl]}] (:sessions @manager)
-            :when (not= id :default)]
-      (pool/destroy-container pool container))
-    (pool/shutdown pool))
+  (pool/shutdown (:pool @manager))
   (swap! manager assoc :sessions {} :transport->sessions {}))
